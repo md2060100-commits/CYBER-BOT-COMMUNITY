@@ -1,167 +1,210 @@
 const axios = require("axios");
-const path = require("path");
 const fs = require("fs");
-
-const API_CONFIG_URL = "https://raw.githubusercontent.com/cyber-ullash/cyber-ullash/refs/heads/main/UllashApi.json";
-
-const getApiUrl = async () => {
-    try {
-        const response = await axios.get(API_CONFIG_URL);
-        const albumUrl = response.data.album;
-        if (!albumUrl) throw new Error("Album API URL missing");
-        return albumUrl;
-    } catch (err) {
-        console.error("API URL Error:", err);
-        throw new Error("Album API Fetch Failed");
-    }
-};
+const path = require("path");
 
 module.exports.config = {
-    name: "album",
-    aliases: [],
-    version: "1.0.2", 
-    author: "Ullash",
-    countDown: 5,
-    role: 0,
-    category: "Media",
-    shortDescription: "Video/Photo Album",
-    longDescription: "Choose album categories and receive media instantly",
-    guide: "{p}album"
+  name: "album",
+  version: "10.0.0",
+  hasPermssion: 0,
+  credits: "SAHU",
+  description: "Advanced Album System",
+  usePrefix: true,
+  cooldowns: 5,
 };
 
-module.exports.onStart = async function ({ message, event, args }) {
-    const { senderID, messageID, threadID } = event;
+const cooldown = new Map();
 
-    const page1 = ["funny", "islamic", "sad", "anime", "cartoon", "love", "horny", "couple", "flower", "marvel"];
-    const page2 = ["aesthetic", "sigma", "lyrics", "cat", "18plus", "freefire", "football", "girl", "friends", "cricket"];
-
-    const categoriesAll = [
-        "funny", "islamic", "sad", "anime", "cartoon", "love", "horny",
-        "couple", "flower", "marvel", "aesthetic", "sigma", "lyrics",
-        "cat", "18plus", "freefire", "football", "girl", "friend", "cricket"
-    ];
-
-    const toBold = (t) => t.replace(/[a-z]/g, c => String.fromCodePoint(0x1d41a + c.charCodeAt(0) - 97));
-    const toBoldNum = (n) => String(n).replace(/[0-9]/g, (c) => String.fromCodePoint(0x1d7ec + parseInt(c)));
-
-    const formatOptions = (list, start = 1) =>
-        list.map((opt, i) => `✨ | ${toBoldNum(i + start)}. ${toBold(opt)}`).join("\n");
-
-    if (args[0] === "2") {
-        let txt =
-            "💫 𝐂𝐡𝐨𝐨𝐬𝐞 𝐚𝐧 𝐚𝐥𝐛𝐮𝐦 𝐜𝐚𝐭𝐞𝐠𝐨𝐫𝐲 𝐁𝐚𝐛𝐲 💫\n" +
-            "✺━━━━━━━◈◉◈━━━━━━━✺\n" +
-            formatOptions(page2, 11) +
-            "\n✺━━━━━━━◈◉◈━━━━━━━✺\n🎯 | 𝐏𝐚𝐠𝐞 [𝟐/𝟐]\n✺━━━━━━━◈◉◈━━━━━━━✺";
-
-        return message.reply(txt, (err, info) => {
-            global.GoatBot.onReply.set(info.messageID, {
-                commandName: module.exports.config.name,
-                author: senderID,
-                categories: page2,
-                page: 2 
-            });
-        });
-    }
-
-    if (!args[0] || args[0].toLowerCase() === "list") {
-        let txt =
-            "💫 𝐂𝐡𝐨𝐨𝐬𝐞 𝐚𝐧 𝐚𝐥𝐛𝐮𝐦 𝐜𝐚𝐭𝐞𝐠𝐨𝐫𝐲 𝐁𝐚𝐛𝐲 💫\n" +
-            "✺━━━━━━━◈◉◈━━━━━━━✺\n" +
-            formatOptions(page1) +
-            `\n✺━━━━━━━◈◉◈━━━━━━━✺\n🎯 | 𝐏𝐚𝐠𝐞 [𝟏/𝟐]\nℹ | 𝐓𝐲𝐩𝐞: /album 2 - 𝐧𝐞𝐱𝐭 𝐩𝐚𝐠𝐞\n✺━━━━━━━◈◉◈━━━━━━━✺`;
-
-        return message.reply(txt, (err, info) => {
-            global.GoatBot.onReply.set(info.messageID, {
-                commandName: module.exports.config.name,
-                author: senderID,
-                categories: page1,
-                page: 1
-            });
-        });
-    }
-
-    const givenCategory = args[0].toLowerCase();
-    if (!categoriesAll.includes(givenCategory))
-        return message.reply("❌ 𝐈𝐧𝐯𝐚𝐥𝐢𝐝 𝐜𝐚𝐭𝐞𝐠𝐨𝐫𝐲! 𝐓𝐲𝐩𝐞 '/album' 𝐭𝐨 𝐬𝐞𝐞 𝐥𝐢𝐬𝐭.");
-
-    return message.reply(`📁 Loading Baby... category: ${givenCategory}... Please use the menu for now.`);
+const categories = {
+  funny: "🤣 Funny Video",
+  sad: "🥺 Sad Video",
+  anime: "🌸 Anime Video",
+  lofi: "🎧 Lofi Video",
+  football: "⚽ Football Video",
+  cricket: "🏏 Cricket Video",
+  cat: "🐱 Cat Video",
+  aesthetic: "🌌 Aesthetic Video",
+  islamic: "🕌 Islamic Video",
+  sigma: "🦁 Sigma Video",
+  lyrics: "🎶 Lyrics Video",
+  flower: "🌹 Flower Video",
+  boy: "🧑 Boy Video",
+  girl: "👧 Girl Video",
+  friend: "🤝 Friends Video",
+  ff: "🎮 Free Fire Video"
 };
 
-module.exports.onReply = async function ({ message, event, Reply }) {
+function checkCooldown(uid, time = 5000) {
 
-    if (event.senderID !== Reply.author)
-        return message.reply("❌ 𝐎𝐧𝐥𝐲 𝐭𝐡𝐞 𝐮𝐬𝐞𝐫 𝐰𝐡𝐨 𝐨𝐩𝐞𝐧𝐞𝐝 𝐭𝐡𝐞 𝐦𝐞𝐧𝐮 𝐜𝐚𝐧 𝐬𝐞𝐥𝐞𝐜𝐭.");
+  if (cooldown.has(uid)) {
 
-    let num = parseInt(event.body);
-    if (isNaN(num)) return message.reply("❌ 𝐏𝐥𝐞𝐚𝐬𝐞 𝐫𝐞𝐩𝐥𝐲 𝐰𝐢𝐭𝐡 𝐚 𝐧𝐮𝐦𝐛𝐞𝐫.");
+    const expire = cooldown.get(uid);
 
-    const selectedList = Reply.categories;
+    if (Date.now() < expire) {
 
-    if (Reply.page === 2 || (num > 10 && num <= 20)) {
-        if (num > 10) num = num - 10;
+      return Math.ceil((expire - Date.now()) / 1000);
+    }
+  }
+
+  cooldown.set(uid, Date.now() + time);
+
+  return false;
+}
+
+module.exports.run = async function ({
+  api,
+  event,
+  args
+}) {
+
+  const cd = checkCooldown(event.senderID);
+
+  if (cd) {
+
+    return api.sendMessage(
+      `⏳ Wait ${cd}s`,
+      event.threadID,
+      event.messageID
+    );
+  }
+
+  // menu
+  if (!args[0]) {
+
+    let msg = "╔════『 ALBUM MENU 』════╗\n\n";
+
+    let i = 1;
+
+    for (const key in categories) {
+
+      msg += `${i++}. ${categories[key]}\n`;
     }
 
-    if (num < 1 || num > selectedList.length)
-        return message.reply("❌ 𝐈𝐧𝐯𝐚𝐥𝐢𝐝 𝐨𝐩𝐭𝐢𝐨𝐧.");
+    msg += "\n╚══════════════════════╝";
 
-    const finalCategory = selectedList[num - 1];
+    return api.sendMessage(
+      msg,
+      event.threadID,
+      (err, info) => {
 
-    // Admin Check
-    const adminID = "100015168369582";
-    if ((finalCategory === "horny" || finalCategory === "18plus") && event.senderID !== adminID)
-        return message.reply("🚫 𝐘𝐨𝐮 𝐚𝐫𝐞 𝐧𝐨𝐭 𝐚𝐮𝐭𝐡𝐨𝐫𝐢𝐳𝐞𝐝 𝐟𝐨𝐫 𝐭𝐡𝐢𝐬 𝐜𝐚𝐭𝐞𝐠𝐨𝐫𝐲.");
-
-    const captions = {
-        funny: "🤣 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐅𝐮𝐧𝐧𝐲 𝐯𝐢𝐝𝐞𝐨",
-        islamic: "😇 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐈𝐬𝐥𝐚𝐦𝐢𝐜 𝐯𝐢𝐝𝐞𝐨",
-        sad: "🥺 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐒𝐚𝐝 𝐯𝐢𝐝𝐞𝐨",
-        anime: "😘 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐀𝐧𝐢𝐦𝐞 𝐯𝐢𝐝𝐞𝐨",
-        cartoon: "😇 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐂𝐚𝐫𝐭𝐨𝐨𝐧 𝐯𝐢𝐝𝐞𝐨",
-        love: "😇 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐋𝐨𝐯𝐞 𝐯𝐢𝐝𝐞𝐨",
-        horny: "🥵 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐇𝐨𝐫𝐧𝐲 𝐯𝐢𝐝𝐞𝐨",
-        couple: "❤️ > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐂𝐨𝐮𝐩𝐥𝐞 𝐯𝐢𝐝𝐞𝐨",
-        flower: "🌸 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐅𝐥𝐨𝐰𝐞𝐫 𝐯𝐢𝐝𝐞𝐨",
-        marvel: "🎯 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐌𝐚𝐫𝐯𝐞𝐥 𝐯𝐢𝐝𝐞𝐨",
-        aesthetic: "🎀 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐀𝐞𝐬𝐭𝐡𝐞𝐭𝐢𝐜 𝐯𝐢𝐝𝐞𝐨",
-        sigma: "🐤 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐒𝐢𝐠𝐦𝐚 𝐯𝐢𝐝𝐞𝐨",
-        lyrics: "🥰 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐋𝐲𝐫𝐢𝐜𝐬 𝐯𝐢𝐝𝐞𝐨",
-        cat: "🐱 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐂𝐚𝐭 𝐯𝐢𝐝𝐞𝐨",
-        "18plus": "🔞 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝟏𝟖+ 𝐯𝐢𝐝𝐞𝐨",
-        freefire: "🎮 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐅𝐫𝐞𝐞𝐟𝐢𝐫𝐞 𝐯𝐢𝐝𝐞𝐨",
-        football: "⚽ > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐅𝐨𝐨𝐭𝐛𝐚𝐥𝐥 𝐯𝐢𝐝𝐞𝐨",
-        girl: "👧 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐆𝐢𝐫𝐥 𝐯𝐢𝐝𝐞𝐨",
-        friends: "👫 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐅𝐫𝐢𝐞𝐧𝐝𝐬 𝐯𝐢𝐝𝐞𝐨",
-        cricket: "🏏 > 𝐍𝐚𝐰 𝐁𝐚𝐛𝐲 𝐂𝐫𝐢𝐤𝐞𝐭 𝐯𝐢𝐝𝐞𝐨"
-    };
-
-    try {
-        const BASE_API_URL = await getApiUrl();
-        const res = await axios.get(`${BASE_API_URL}/album?type=${finalCategory}`);
-
-        const media = res.data.data;
-        if (!media) return message.reply("❌ 𝐅𝐚𝐢𝐥𝐞𝐝 𝐭𝐨 𝐬𝐞𝐧𝐝 𝐯𝐢𝐝𝐞𝐨.");
-
-        const fileName = path.basename(media).split("?")[0];
-        const savePath = path.join(__dirname, "cache", `${Date.now()}_${fileName}`);
-
-        const file = await axios.get(media, { responseType: "stream" });
-        const writer = fs.createWriteStream(savePath);
-
-        file.data.pipe(writer);
-
-        writer.on("finish", () => {
-            message.reply(
-                {
-                    body: captions[finalCategory] || "✨ Here is your video Baby", // Fixed variable name
-                    attachment: fs.createReadStream(savePath)
-                },
-                () => fs.unlinkSync(savePath)
-            );
+        global.client.handleReply.push({
+          name: this.config.name,
+          messageID: info.messageID,
+          author: event.senderID,
         });
+      },
+      event.messageID
+    );
+  }
 
-    } catch (err) {
-        console.error(err);
-        return message.reply("❌ 𝐒𝐨𝐦𝐞𝐭𝐡𝐢𝐧𝐠 𝐰𝐞𝐧𝐭 𝐰𝐫𝐨𝐧𝐠. 𝐓𝐫𝐲 𝐚𝐠𝐚𝐢𝐧!");
-    }
+  const type = args[0].toLowerCase();
+
+  if (!categories[type]) {
+
+    return api.sendMessage(
+      "❌ Invalid Category",
+      event.threadID,
+      event.messageID
+    );
+  }
+
+  return sendMedia(api, event, type);
 };
+
+module.exports.handleReply = async function ({
+  api,
+  event,
+  handleReply
+}) {
+
+  if (event.senderID != handleReply.author) return;
+
+  const index = parseInt(event.body);
+
+  const keys = Object.keys(categories);
+
+  const type = keys[index - 1];
+
+  if (!type) {
+
+    return api.sendMessage(
+      "❌ Invalid Number",
+      event.threadID,
+      event.messageID
+    );
+  }
+
+  return sendMedia(api, event, type);
+};
+
+async function sendMedia(api, event, type) {
+
+  try {
+
+    // YOUR API
+    const apiUrl =
+      `https://example.com/album?type=${type}`;
+
+    const res = await axios.get(apiUrl);
+
+    const mediaUrl = res.data.url;
+
+    const ext =
+      path.extname(mediaUrl).split("?")[0] || ".mp4";
+
+    const filePath = path.join(
+      __dirname,
+      "cache",
+      `${Date.now()}${ext}`
+    );
+
+    // stream download
+    const response = await axios({
+      url: mediaUrl,
+      method: "GET",
+      responseType: "stream",
+    });
+
+    const writer = fs.createWriteStream(filePath);
+
+    response.data.pipe(writer);
+
+    writer.on("finish", async () => {
+
+      await api.sendMessage(
+        {
+          body:
+            `✅ ${categories[type]}\n\n` +
+            `🎬 Enjoy Your Video`,
+          attachment: fs.createReadStream(filePath),
+        },
+        event.threadID,
+        () => {
+
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        },
+        event.messageID
+      );
+    });
+
+    writer.on("error", () => {
+
+      api.sendMessage(
+        "❌ Download Failed",
+        event.threadID,
+        event.messageID
+      );
+    });
+
+  } catch (e) {
+
+    console.log(e);
+
+    api.sendMessage(
+      `❌ Error:\n${e.message}`,
+      event.threadID,
+      event.messageID
+    );
+  }
+}
